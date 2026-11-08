@@ -7,7 +7,6 @@
 """
 import requests, subprocess, platform, time, uuid, os
 import threading
-import cv2, mss, numpy as np
 import pyperclip
 import base64
 
