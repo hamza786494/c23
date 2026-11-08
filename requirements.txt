@@ -1,7 +1,3 @@
 flask
 requests
 gunicorn
-opencv-python-headless
-mss
-numpy
-pyperclip
