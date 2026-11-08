@@ -1,1 +1,1 @@
-web: gunicorn cloud_c2:app
+web: gunicorn --bind 0.0.0.0:$PORT cloud_c2:app
